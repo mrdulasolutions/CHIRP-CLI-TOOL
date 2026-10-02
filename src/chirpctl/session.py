@@ -26,6 +26,12 @@ def attach_status(radio: Any) -> None:
     radio.status_fn = _status_to_stderr
 
 
+def _ensure_pipe_log(pipe: Any) -> None:
+    """CHIRP clone drivers call pipe.log() during block transfers."""
+    if getattr(pipe, "log", None) is None:
+        pipe.log = lambda message: None
+
+
 def driver_name_for_radio(radio: Any) -> str:
     rclass = radio.__class__
     if hasattr(rclass, "_orig_rclass"):
@@ -52,6 +58,7 @@ def open_radio(target: Target) -> Any:
         pipe.open()
     else:
         pipe = serial.Serial(port=target.port, timeout=0.5, baudrate=baud)
+    _ensure_pipe_log(pipe)
     radio = rclass(pipe)
     attach_status(radio)
     return radio
