@@ -20,6 +20,7 @@ classifiers = [
 dependencies = [
     "chirp @ git+https://github.com/kk7ds/chirp.git",
     "pyserial",
+    'tomli >= 2.0.0; python_version < "3.11"',
 ]
 
 [project.optional-dependencies]
