@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/chirpctl-logo.png" alt="chirpctl — CHIRP command-line tool" width="320" />
+</p>
+
 # chirpctl
 
 **Multi-radio CHIRP programming from the terminal** — built on the official [CHIRP](https://github.com/kk7ds/chirp) drivers. Name your radios once, import CSV channel plans, backup, upload, and verify read-back without the GUI.
