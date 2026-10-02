@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from chirp import directory
@@ -35,7 +36,8 @@ from chirpctl.skill_install import install_skill_links
 from chirpctl.snapshots import delete_snapshot, get_snapshot_path, list_snapshots, save_snapshot
 from chirpctl.status_cmd import run_status
 from chirpctl.targets import parse_target
-from chirpctl.transfer import open_target_as_radio, read_radio, verify_radio, write_radio
+from chirpctl.errors import RadioTransferError
+from chirpctl.transfer import open_target_as_radio, read_radio, readback_verify, verify_radio, write_radio
 from chirpctl.wizard import run_wizard
 
 
@@ -151,6 +153,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_write.add_argument("target")
     p_write.add_argument("plan")
     p_write.add_argument("--yes", action="store_true")
+    p_write.add_argument("--clear-rest", action="store_true", default=True)
+    p_write.add_argument("--no-clear-rest", action="store_false", dest="clear_rest")
     _add_io(p_write)
 
     p_copy = sub.add_parser("copy", help="Copy channels between targets")
@@ -279,9 +283,13 @@ def main(argv: list[str] | None = None) -> int:
         return _dispatch(args, out)
     except PermissionError as exc:
         return out.error(str(exc))
+    except RadioTransferError as exc:
+        return out.error(str(exc), phase=exc.phase, port=exc.port)
     except (FileNotFoundError, KeyError, ValueError) as exc:
         return out.error(str(exc))
     except Exception as exc:
+        if os.environ.get("CHIRPCTL_DEBUG"):
+            raise
         return out.error(f"{type(exc).__name__}: {exc}")
 
 
@@ -405,7 +413,12 @@ def _dispatch(args: argparse.Namespace, out: Output) -> int:
         return EXIT_OK
 
     if cmd == "write":
-        info = write_radio(args.target, args.plan, confirmed=args.yes)
+        info = write_radio(
+            args.target,
+            args.plan,
+            confirmed=args.yes,
+            clear_rest=args.clear_rest,
+        )
         out.emit({"ok": True, "command": "write", **info})
         return EXIT_OK
 

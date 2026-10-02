@@ -6,8 +6,9 @@ import sys
 from typing import Any
 
 import serial
-from chirp import chirp_common, directory, errors
+from chirp import chirp_common, directory
 
+from chirpctl.chirp_serial import ChirpSerial
 from chirpctl.targets import Target, TargetKind
 
 
@@ -26,12 +27,6 @@ def attach_status(radio: Any) -> None:
     radio.status_fn = _status_to_stderr
 
 
-def _ensure_pipe_log(pipe: Any) -> None:
-    """CHIRP clone drivers call pipe.log() during block transfers."""
-    if getattr(pipe, "log", None) is None:
-        pipe.log = lambda message: None
-
-
 def driver_name_for_radio(radio: Any) -> str:
     rclass = radio.__class__
     if hasattr(rclass, "_orig_rclass"):
@@ -39,7 +34,7 @@ def driver_name_for_radio(radio: Any) -> str:
     return directory.get_driver(rclass)
 
 
-def open_radio(target: Target) -> Any:
+def open_radio(target: Target, *, debug_log: bool = False) -> Any:
     directory.import_drivers()
     if target.kind == TargetKind.FILE:
         if not target.path:
@@ -56,9 +51,15 @@ def open_radio(target: Target) -> Any:
         pipe = serial.serial_for_url(target.port, do_not_open=True)
         pipe.timeout = 0.5
         pipe.open()
+        if not hasattr(pipe, "log"):
+            pipe.log = lambda message: None  # type: ignore[attr-defined]
     else:
-        pipe = serial.Serial(port=target.port, timeout=0.5, baudrate=baud)
-    _ensure_pipe_log(pipe)
+        pipe = ChirpSerial(
+            port=target.port,
+            timeout=0.5,
+            baudrate=baud,
+            debug_log=debug_log,
+        )
     radio = rclass(pipe)
     attach_status(radio)
     return radio

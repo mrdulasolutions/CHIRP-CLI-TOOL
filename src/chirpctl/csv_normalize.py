@@ -7,38 +7,82 @@ import io
 import re
 from pathlib import Path
 
-STANDARD_HEADERS = [
-    "Location",
-    "Name",
-    "Frequency",
-    "Duplex",
-    "Offset",
-    "Tone",
-    "rToneFreq",
-    "cToneFreq",
-    "DtcsCode",
-    "DtcsPolarity",
-    "RxDtcsCode",
-    "Mode",
-    "TStep",
-    "Skip",
-    "Power",
-    "Comment",
-]
+from chirp import chirp_common
+
+# Match CHIRP export columns (through Comment; DV columns optional).
+CHIRP_HEADERS = chirp_common.Memory.CSV_FORMAT[:17]
+
+NOAA_FREQ_MHZ = {
+    162.400,
+    162.425,
+    162.450,
+    162.475,
+    162.500,
+    162.525,
+    162.550,
+}
 
 
-def _is_currency_name(val: str) -> bool:
-    return bool(re.match(r"^-\$\d+(\.\d+)?$", val.strip()))
+def _round_freq(val: str) -> str:
+    val = val.strip()
+    if not val:
+        return val
+    try:
+        return f"{float(val):.6f}".rstrip("0").rstrip(".")
+    except ValueError:
+        return val
+
+
+def _round_tone(val: str) -> str:
+    val = val.strip()
+    if not val:
+        return val
+    try:
+        return f"{float(val):.1f}"
+    except ValueError:
+        return val
 
 
 def _fix_name(val: str) -> str:
-    if _is_currency_name(val):
-        return val.strip().replace("$", "")
-    return val
+    v = val.strip()
+    if re.match(r"^-\$\d", v):
+        return v.replace("$", "")
+    if re.match(r"^-?\d+(\.\d+)?$", v) and v.startswith("-"):
+        return v
+    return v
+
+
+def _row_from_dict(row: dict[str, str]) -> list[str]:
+    out: list[str] = []
+    for h in CHIRP_HEADERS:
+        out.append((row.get(h) or "").strip())
+    return out
+
+
+def _detect_shifted_row(cells: list[str]) -> bool:
+    """Numbers export without CrossMode puts FM in CrossMode column."""
+    if len(cells) < 12:
+        return False
+    mode_candidates = {"FM", "NFM", "AM", "DV", "USB", "LSB"}
+    cross = cells[11].strip() if len(cells) > 11 else ""
+    mode = cells[12].strip() if len(cells) > 12 else ""
+    if cross in mode_candidates and not mode:
+        return True
+    return False
+
+
+def _maybe_noaa_row(row: dict[str, str]) -> None:
+    try:
+        mhz = float(row.get("Frequency", "") or 0)
+    except ValueError:
+        return
+    if round(mhz, 3) in NOAA_FREQ_MHZ or (162.4 <= mhz <= 162.55):
+        row["Duplex"] = ""
+        row["Skip"] = "S"
+        row.setdefault("CrossMode", "Tone->Tone")
 
 
 def normalize_csv_text(text: str) -> tuple[str, list[str]]:
-    """Return normalized CSV text and human-readable fix notes."""
     notes: list[str] = []
     reader = csv.reader(io.StringIO(text))
     rows = list(reader)
@@ -46,36 +90,35 @@ def normalize_csv_text(text: str) -> tuple[str, list[str]]:
         return text, notes
 
     header = [h.strip() for h in rows[0]]
-    if "Frequency" not in header and len(header) >= 3:
-        notes.append("Assumed first row is header without standard CHIRP names")
-        header = STANDARD_HEADERS[: len(rows[0])]
+    has_named_header = "Frequency" in header
 
-    out_rows: list[list[str]] = [STANDARD_HEADERS]
+    out_rows: list[list[str]] = [CHIRP_HEADERS]
+
     for raw in rows[1:]:
         if not any(cell.strip() for cell in raw):
             continue
-        row = list(raw) + [""] * (len(STANDARD_HEADERS) - len(raw))
-        row = row[: len(STANDARD_HEADERS)]
 
-        # Shifted row: empty Tone but Frequency looks like a name token
-        tone_idx = STANDARD_HEADERS.index("Tone")
-        freq_idx = STANDARD_HEADERS.index("Frequency")
-        if not row[tone_idx].strip() and row[freq_idx].strip():
-            freq_val = row[freq_idx].strip()
-            if not re.match(r"^\d", freq_val):
-                # shift right from Name column
-                fixed = [row[0], row[1]] + row[2:]
-                while len(fixed) < len(STANDARD_HEADERS):
-                    fixed.append("")
-                row = fixed[: len(STANDARD_HEADERS)]
-                notes.append(f"Re-aligned shifted row at location {row[0]}")
+        if has_named_header:
+            keyed = {header[i].strip(): raw[i].strip() if i < len(raw) else "" for i in range(len(header))}
+            for h in CHIRP_HEADERS:
+                keyed.setdefault(h, "")
+            row_dict = keyed
+        else:
+            cells = list(raw) + [""] * (len(CHIRP_HEADERS) - len(raw))
+            if _detect_shifted_row(cells):
+                notes.append(f"Re-aligned shifted row at location {cells[0]}")
+                cells = [cells[0], cells[1]] + [""] + cells[2:]
+            row_dict = {CHIRP_HEADERS[i]: cells[i] if i < len(cells) else "" for i in range(len(CHIRP_HEADERS))}
 
-        name_idx = STANDARD_HEADERS.index("Name")
-        row[name_idx] = _fix_name(row[name_idx])
-        if _is_currency_name(raw[name_idx] if len(raw) > name_idx else ""):
-            notes.append(f"Fixed currency-formatted name at location {row[0]}")
-
-        out_rows.append(row)
+        row_dict["Name"] = _fix_name(row_dict.get("Name", ""))
+        row_dict["Frequency"] = _round_freq(row_dict.get("Frequency", ""))
+        row_dict["Offset"] = _round_freq(row_dict.get("Offset", ""))
+        row_dict["rToneFreq"] = _round_tone(row_dict.get("rToneFreq", ""))
+        row_dict["cToneFreq"] = _round_tone(row_dict.get("cToneFreq", ""))
+        if not row_dict.get("CrossMode", "").strip():
+            row_dict["CrossMode"] = "Tone->Tone"
+        _maybe_noaa_row(row_dict)
+        out_rows.append(_row_from_dict(row_dict))
 
     buf = io.StringIO()
     writer = csv.writer(buf)

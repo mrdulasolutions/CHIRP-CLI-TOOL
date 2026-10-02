@@ -14,7 +14,7 @@ from chirpctl.csv_validate import validate_csv
 from chirpctl.groups import resolve_profile_names
 from chirpctl.memories import import_channels, list_channels
 from chirpctl.profiles import get_profile
-from chirpctl.transfer import read_radio, verify_radio, write_radio
+from chirpctl.transfer import readback_verify, write_radio
 
 
 def _count_channels(image_path: str) -> int:
@@ -95,13 +95,21 @@ def program_one(
     if not confirmed:
         raise PermissionError("Refused: pass --yes to program the radio")
 
-    read_info = read_radio(target)
-    steps.append({"step": "backup", "detail": read_info["path"]})
+    write_info = write_radio(
+        target,
+        upload_path,
+        confirmed=True,
+        clear_rest=clear_rest,
+    )
+    steps.append({"step": "backup", "detail": write_info.get("backup", "")})
+    steps.append({"step": "upload", "detail": write_info.get("upload_image", "")})
 
-    write_info = write_radio(target, upload_path, confirmed=True)
-    steps.append({"step": "upload", "detail": write_info.get("backup", "")})
-
-    verify = verify_radio(target, work_csv, confirmed=True, clear_rest=clear_rest)
+    verify = readback_verify(
+        target,
+        work_csv,
+        pre_backup=write_info.get("backup"),
+        clear_rest=clear_rest,
+    )
     steps.append(
         {
             "step": "verify",
@@ -116,7 +124,7 @@ def program_one(
         "command": "program",
         "match": verify["match"],
         "steps": steps,
-        "backup_path": read_info["path"],
+        "backup_path": write_info.get("backup"),
         "pre_upload_backup": write_info.get("backup"),
         "channel_count": channel_count,
         "restore_hint": restore_hint,

@@ -45,7 +45,12 @@ def clear_channel(radio: Any, number: str | int) -> None:
     radio.set_memory(mem)
 
 
-def _import_csv_into_radio(dst: Any, csv_path: str, clear_rest: bool = False) -> list[str]:
+def _import_csv_into_radio(
+    dst: Any,
+    csv_path: str,
+    clear_rest: bool = False,
+    strict: bool = False,
+) -> list[str]:
     warnings: list[str] = []
     src = CSVRadio(csv_path)
     src_features = src.get_features()
@@ -61,7 +66,10 @@ def _import_csv_into_radio(dst: Any, csv_path: str, clear_rest: bool = False) ->
             if isinstance(dst_mem.number, int):
                 used_numbers.add(dst_mem.number)
         except DestNotCompatible as exc:
-            warnings.append(f"Channel {i}: {exc}")
+            msg = f"Channel {i}: {exc}"
+            if strict:
+                raise ValueError(msg) from exc
+            warnings.append(msg)
     if clear_rest:
         rf = dst.get_features()
         dstart, dend = rf.memory_bounds
@@ -182,13 +190,21 @@ def copy_between_targets(
     return {"warnings": warnings, "output": saved}
 
 
-def load_plan_into_clone(radio: Any, plan_path: str) -> list[str]:
-    """Load .img or .csv into an open clone-mode radio object."""
+def load_plan_into_clone(
+    radio: Any,
+    plan_path: str,
+    *,
+    clear_rest: bool = True,
+    strict: bool = True,
+) -> list[str]:
+    """Load .img (full mmap) or .csv into an open clone-mode radio object."""
     from chirp import chirp_common, directory
 
     lower = plan_path.lower()
     if lower.endswith(".csv"):
-        return _import_csv_into_radio(radio, plan_path, clear_rest=False)
+        return _import_csv_into_radio(
+            radio, plan_path, clear_rest=clear_rest, strict=strict
+        )
     if lower.endswith(".img"):
         plan_radio = directory.get_radio_by_image(plan_path)
         if radio_model_key(radio) != radio_model_key(plan_radio):
@@ -196,10 +212,30 @@ def load_plan_into_clone(radio: Any, plan_path: str) -> list[str]:
                 f"Image model {radio_model_key(plan_radio)} does not match "
                 f"target {radio_model_key(radio)}"
             )
-        warnings: list[str] = []
-        copy_memories(plan_radio, radio, replace=True)
-        return warnings
+        if not isinstance(radio, chirp_common.CloneModeRadio):
+            raise ValueError("Target is not a clone-mode radio")
+        radio.load_mmap(plan_path)
+        return []
     raise ValueError(f"Unsupported plan file: {plan_path}")
+
+
+def build_expected_from_plan(
+    plan_path: str,
+    pre_backup: str | None,
+    *,
+    clear_rest: bool = True,
+) -> Any:
+    """Build in-memory expected radio state for verify read-back."""
+    from chirp import directory
+
+    plan_path = os.path.abspath(os.path.expanduser(plan_path))
+    if plan_path.lower().endswith(".img"):
+        return directory.get_radio_by_image(plan_path)
+    if not pre_backup:
+        raise ValueError("CSV verify requires pre_upload backup path")
+    expected = directory.get_radio_by_image(pre_backup)
+    _import_csv_into_radio(expected, plan_path, clear_rest=clear_rest, strict=True)
+    return expected
 
 
 def radio_model_key(radio: Any) -> str:

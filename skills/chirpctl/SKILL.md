@@ -40,6 +40,8 @@ chirpctl status --format json
 chirpctl program uv32 plan.chirp.csv --yes --format json
 ```
 
+`program` uploads once, then read-backs for verify (it does not call `write` twice). UV-32 needs ~4s with the port closed between download and upload (`CHIRPCTL_SETTLE_SEC`, default 4). Set `CHIRPCTL_DEBUG=1` for driver `pipe.log` lines on stderr.
+
 Or step-by-step:
 
 ```bash
