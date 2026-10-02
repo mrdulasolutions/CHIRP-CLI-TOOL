@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chirpctl"
+version = "0.1.0"
+description = "Multi-radio CHIRP CLI for read, write, copy, and verify"
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.10,<4"
+authors = [{ name = "MR Dula Solutions" }]
+keywords = ["chirp", "ham-radio", "baofeng", "cli", "programming"]
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Environment :: Console",
+    "Topic :: Communications :: Ham Radio",
+]
+[project.urls]
+Homepage = "https://github.com/mrdulasolutions/CHIRP-CLI-TOOL"
+Repository = "https://github.com/mrdulasolutions/CHIRP-CLI-TOOL"
+Issues = "https://github.com/mrdulasolutions/CHIRP-CLI-TOOL/issues"
+dependencies = [
+    "chirp @ git+https://github.com/kk7ds/chirp.git",
+    "pyserial",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+chirpctl = "chirpctl.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
