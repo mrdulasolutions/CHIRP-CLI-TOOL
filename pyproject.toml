@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chirpctl"
-version = "0.1.0"
+version = "0.0.1"
 description = "Multi-radio CHIRP CLI for read, write, copy, and verify"
 readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
