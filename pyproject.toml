@@ -17,10 +17,6 @@ classifiers = [
     "Environment :: Console",
     "Topic :: Communications :: Ham Radio",
 ]
-[project.urls]
-Homepage = "https://github.com/mrdulasolutions/CHIRP-CLI-TOOL"
-Repository = "https://github.com/mrdulasolutions/CHIRP-CLI-TOOL"
-Issues = "https://github.com/mrdulasolutions/CHIRP-CLI-TOOL/issues"
 dependencies = [
     "chirp @ git+https://github.com/kk7ds/chirp.git",
     "pyserial",
@@ -28,6 +24,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/mrdulasolutions/CHIRP-CLI-TOOL"
+Repository = "https://github.com/mrdulasolutions/CHIRP-CLI-TOOL"
+Issues = "https://github.com/mrdulasolutions/CHIRP-CLI-TOOL/issues"
 
 [project.scripts]
 chirpctl = "chirpctl.cli:main"
